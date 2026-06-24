@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExtraccionDocumento",
+  "description": "Schema de respuesta que Gemini debe devolver para cualquier documento fiscal procesado.",
+  "type": "object",
+  "required": ["tipo_documento", "confianza_global", "cabecera", "grupos_iva"],
+  "properties": {
+
+    "tipo_documento": {
+      "description": "Tipo de documento detectado en la imagen.",
+      "type": "string",
+      "enum": ["factura", "ticket_simplificado"]
+    },
+
+    "confianza_global": {
+      "description": "Confianza agregada de la extraccion completa. 0.0 = ilegible, 1.0 = extraccion perfecta.",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+
+    "cabecera": {
+      "type": "object",
+      "required": ["emisor"],
+      "properties": {
+
+        "emisor": {
+          "type": "object",
+          "required": ["nombre", "nombre_confianza"],
+          "properties": {
+            "nombre":            { "type": ["string", "null"] },
+            "nombre_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "nif":               { "type": ["string", "null"] },
+            "nif_confianza":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "nif_estado":        { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
+            "direccion":         { "type": ["string", "null"] }
+          }
+        },
+
+        "receptor": {
+          "description": "Puede estar ausente en tickets simplificados.",
+          "type": ["object", "null"],
+          "properties": {
+            "nombre":            { "type": ["string", "null"] },
+            "nombre_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "nif":               { "type": ["string", "null"] },
+            "nif_confianza":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "nif_estado":        { "type": "string", "enum": ["presente", "ilegible", "ausente"] }
+          }
+        },
+
+        "numero_factura": {
+          "type": ["string", "null"],
+          "description": "Ausente en tickets simplificados."
+        },
+        "numero_factura_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "numero_factura_estado":    { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
+
+        "fecha_emision":            { "type": ["string", "null"], "format": "date", "description": "ISO 8601: YYYY-MM-DD" },
+        "fecha_emision_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "fecha_emision_estado":     { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
+
+        "concepto_general": {
+          "type": ["string", "null"],
+          "description": "Descripcion general del servicio o producto. Requerido si no hay lineas de detalle."
+        },
+        "concepto_general_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+
+        "retencion_irpf_porcentaje": {
+          "type": ["number", "null"],
+          "description": "Porcentaje de retencion IRPF si aparece en el documento (ej: 15, 7, 2). Null si no aplica."
+        },
+        "retencion_irpf_cuota": {
+          "type": ["number", "null"],
+          "description": "Importe en euros de la retencion IRPF."
+        },
+        "retencion_irpf_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+
+        "total_factura":            { "type": ["number", "null"], "description": "Importe total del documento en euros." },
+        "total_factura_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "total_factura_estado":     { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
+
+        "categoria_sugerida": {
+          "type": ["string", "null"],
+          "description": "Categoria de gasto detectada por el modelo. El backend puede sobreescribirla.",
+          "enum": [
+            "software_suscripciones",
+            "material_oficina",
+            "dietas_restauracion",
+            "viajes_transporte",
+            "formacion",
+            "vehiculos",
+            "suministros_hogar",
+            "suministros_oficina",
+            "seguros",
+            "servicios_profesionales",
+            "publicidad_marketing",
+            "alquiler",
+            "cuota_autonomo_reta",
+            "otros",
+            null
+          ]
+        },
+        "categoria_sugerida_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      }
+    },
+
+    "grupos_iva": {
+      "description": "Un elemento por cada tipo de IVA presente en el documento. Siempre presente, minimo 1 elemento.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["tipo_iva", "base_imponible", "cuota_iva", "confianza"],
+        "properties": {
+          "tipo_iva": {
+            "type": "number",
+            "description": "Porcentaje de IVA. Valores validos: 0, 4, 10, 21.",
+            "enum": [0, 4, 10, 21]
+          },
+          "base_imponible": { "type": ["number", "null"], "description": "Base imponible en euros para este tipo de IVA." },
+          "cuota_iva":      { "type": ["number", "null"], "description": "Cuota de IVA resultante en euros." },
+          "confianza":      { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        }
+      }
+    },
+
+    "notas_extraccion": {
+      "type": ["string", "null"],
+      "description": "Texto libre del modelo para indicar ambiguedades, campos dudosos o advertencias. Solo para depuracion."
+    }
+  }
+}

@@ -9,7 +9,7 @@
     "tipo_documento": {
       "description": "Tipo de documento detectado en la imagen.",
       "type": "string",
-      "enum": ["factura", "ticket_simplificado"]
+      "enum": ["factura", "ticket_simplificado", "factura_rectificativa"]
     },
 
     "confianza_global": {
@@ -33,7 +33,12 @@
             "nif":               { "type": ["string", "null"] },
             "nif_confianza":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
             "nif_estado":        { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
-            "direccion":         { "type": ["string", "null"] }
+            "direccion":         { "type": ["string", "null"] },
+            "pais_codigo": {
+              "type": ["string", "null"],
+              "description": "Codigo ISO 3166-1 alpha-2 del pais del emisor (ej: ES, DE, FR, US). Util para detectar operaciones intracomunitarias (IVA 0%) o extracomunitarias.",
+              "pattern": "^[A-Z]{2}$"
+            }
           }
         },
 
@@ -51,14 +56,27 @@
 
         "numero_factura": {
           "type": ["string", "null"],
-          "description": "Ausente en tickets simplificados."
+          "description": "Ausente en tickets simplificados. En facturas rectificativas, es el numero de la factura rectificativa (no el de la original)."
         },
         "numero_factura_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "numero_factura_estado":    { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
 
+        "numero_factura_original": {
+          "type": ["string", "null"],
+          "description": "Solo para factura_rectificativa: numero de la factura original que se corrige o anula."
+        },
+
         "fecha_emision":            { "type": ["string", "null"], "format": "date", "description": "ISO 8601: YYYY-MM-DD" },
         "fecha_emision_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "fecha_emision_estado":     { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
+
+        "moneda": {
+          "type": "string",
+          "description": "Codigo ISO 4217 de la moneda del documento (ej: EUR, USD, GBP). Si no se especifica en el documento, asumir EUR.",
+          "default": "EUR",
+          "examples": ["EUR", "USD", "GBP", "CHF"]
+        },
+        "moneda_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
 
         "concepto_general": {
           "type": ["string", "null"],
@@ -68,21 +86,24 @@
 
         "retencion_irpf_porcentaje": {
           "type": ["number", "null"],
-          "description": "Porcentaje de retencion IRPF si aparece en el documento (ej: 15, 7, 2). Null si no aplica."
+          "description": "Porcentaje de retencion IRPF tal y como aparece en el documento. Sin restriccion de rango: puede ser 7, 15, 19 (alquiler, Modelo 115), 2 (actividades agricolas), etc. Null si no aplica."
         },
         "retencion_irpf_cuota": {
           "type": ["number", "null"],
-          "description": "Importe en euros de la retencion IRPF."
+          "description": "Importe en euros (o moneda del documento) de la retencion IRPF. Puede ser negativo en facturas rectificativas."
         },
         "retencion_irpf_confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
 
-        "total_factura":            { "type": ["number", "null"], "description": "Importe total del documento en euros." },
+        "total_factura": {
+          "type": ["number", "null"],
+          "description": "Importe total del documento en la moneda indicada. Negativo en facturas rectificativas (abonos)."
+        },
         "total_factura_confianza":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "total_factura_estado":     { "type": "string", "enum": ["presente", "ilegible", "ausente"] },
 
         "categoria_sugerida": {
           "type": ["string", "null"],
-          "description": "Categoria de gasto detectada por el modelo. El backend puede sobreescribirla.",
+          "description": "Categoria de gasto detectada por el modelo. El backend puede sobreescribirla con las reglas de CategoriaGasto.",
           "enum": [
             "software_suscripciones",
             "material_oficina",
@@ -106,7 +127,7 @@
     },
 
     "grupos_iva": {
-      "description": "Un elemento por cada tipo de IVA presente en el documento. Siempre presente, minimo 1 elemento.",
+      "description": "Un elemento por cada tipo de IVA presente en el documento. Siempre presente, minimo 1 elemento. Los importes pueden ser negativos en facturas rectificativas.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -115,12 +136,32 @@
         "properties": {
           "tipo_iva": {
             "type": "number",
-            "description": "Porcentaje de IVA. Valores validos: 0, 4, 10, 21.",
+            "description": "Porcentaje de IVA. Valores habituales: 0 (exento o intracomunitario), 4, 10, 21.",
             "enum": [0, 4, 10, 21]
           },
-          "base_imponible": { "type": ["number", "null"], "description": "Base imponible en euros para este tipo de IVA." },
-          "cuota_iva":      { "type": ["number", "null"], "description": "Cuota de IVA resultante en euros." },
-          "confianza":      { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+          "base_imponible": {
+            "type": ["number", "null"],
+            "description": "Base imponible en la moneda del documento para este tramo de IVA. Negativo en facturas rectificativas."
+          },
+          "cuota_iva": {
+            "type": ["number", "null"],
+            "description": "Cuota de IVA resultante en la moneda del documento. Negativo en facturas rectificativas."
+          },
+          "recargo_equivalencia_porcentaje": {
+            "type": ["number", "null"],
+            "description": "Porcentaje de Recargo de Equivalencia si aplica (ej: 5.2% para IVA 21%, 1.4% para IVA 10%, 0.5% para IVA 4%). Null si el emisor o receptor no tributan en RE."
+          },
+          "recargo_equivalencia_cuota": {
+            "type": ["number", "null"],
+            "description": "Importe del Recargo de Equivalencia en la moneda del documento. Negativo en facturas rectificativas."
+          },
+          "recargo_equivalencia_confianza": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "default": 0.0
+          },
+          "confianza": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
         }
       }
     },
